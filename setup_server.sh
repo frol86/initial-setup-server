@@ -112,6 +112,37 @@ valid_ipv4() {
     done
 }
 
+ask_amnezia_subnet() {
+    local address first second third last
+    while true; do
+        read -rp "Подсеть AmneziaWG [10.8.0.0/24]: " AMNEZIA_SUBNET || exit 1
+        AMNEZIA_SUBNET="${AMNEZIA_SUBNET:-10.8.0.0/24}"
+        address="${AMNEZIA_SUBNET%/24}"
+        if [[ "$AMNEZIA_SUBNET" != */24 ]] || ! valid_ipv4 "$address"; then
+            echo "Укажите подсеть с маской /24, например 10.9.0.0/24."
+            continue
+        fi
+        IFS=. read -r first second third last <<< "$address"
+        first=$((10#$first))
+        second=$((10#$second))
+        third=$((10#$third))
+        last=$((10#$last))
+        if (( last != 0 )); then
+            echo "Нужен адрес сети с окончанием .0/24, а не адрес клиента."
+            continue
+        fi
+        if ! (( first == 10 || (first == 172 && second >= 16 && second <= 31) ||
+                (first == 192 && second == 168) )); then
+            echo "Выберите частную сеть: 10.x.x.0/24, 172.16–31.x.0/24 или 192.168.x.0/24."
+            continue
+        fi
+        AMNEZIA_SUBNET="$first.$second.$third.0/24"
+        AMNEZIA_ADDRESS="$first.$second.$third.x"
+        echo "Сервер VPN: $first.$second.$third.1; первый клиент: $first.$second.$third.2/32."
+        break
+    done
+}
+
 # Успех означает: контейнер работает, health успешен (если есть),
 # и локальная веб-панель отвечает. Это не проверка VPN с внешнего клиента.
 wait_for_amnezia() {
@@ -289,6 +320,9 @@ if ask_yes_no "Установить Docker Engine + Docker Compose Plugin?" "Y";
         echo "Настройка AmneziaWG Easy"
         echo
 
+        ask_amnezia_subnet
+        echo
+
         while true; do
 
             read -rsp "Пароль для админки AmneziaWG Easy: " AMNEZIA_PASSWORD
@@ -369,6 +403,7 @@ if [[ "$INSTALL_AMNEZIA" == "true" ]]; then
     echo "WG UDP:    51820"
     echo "WG Admin:  127.0.0.1:51821"
     echo "WG DNS:    8.8.8.8, 8.8.4.4"
+    echo "WG сеть:   $AMNEZIA_SUBNET"
 fi
 
 echo
@@ -750,6 +785,13 @@ if [[ "$INSTALL_AMNEZIA" == "true" ]]; then
 
     else
 
+        if [[ -e /srv/amnezia-wg/wg0.json || -e /srv/amnezia-wg/wg0.conf ]]; then
+            echo "В /srv/amnezia-wg уже есть конфигурация AmneziaWG."
+            echo "Выбранная подсеть $AMNEZIA_SUBNET не применена."
+            echo "Остановлено: перенос существующей сети и клиентов требует отдельной настройки."
+            exit 1
+        fi
+
         echo
         echo "Запуск AmneziaWG Easy..."
 
@@ -761,6 +803,7 @@ if [[ "$INSTALL_AMNEZIA" == "true" ]]; then
             --name amnezia-wg-easy \
             -e WG_HOST="$PUBLIC_IP" \
             -e PASSWORD \
+            -e WG_DEFAULT_ADDRESS="$AMNEZIA_ADDRESS" \
             -e WG_DEFAULT_DNS="8.8.8.8, 8.8.4.4" \
             -p 51820:51820/udp \
             -p 127.0.0.1:51821:51821/tcp \
@@ -858,6 +901,7 @@ if [[ "$INSTALL_AMNEZIA" == "true" ]]; then
         echo "Внешний IPv4: $PUBLIC_IP"
         echo "VPN: 51820/udp"
         echo "DNS: 8.8.8.8, 8.8.4.4"
+        echo "Подсеть VPN: $AMNEZIA_SUBNET"
         echo "Конфигурация: /srv/amnezia-wg"
         echo "Админка: http://127.0.0.1:51821 (через SSH-туннель)"
         echo
