@@ -312,7 +312,7 @@ if ask_yes_no "Установить Docker Engine + Docker Compose Plugin?" "Y";
 
         done
 
-        unset AMNEZIA_PASSWORD PASSWORD_CONFIRM
+        unset AMNEZIA_PASSWORD_CONFIRM
 
     else
 
@@ -876,4 +876,3 @@ else
 fi
 
 exit "$FINAL_EXIT_CODE"
-
