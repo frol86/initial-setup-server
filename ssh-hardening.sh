@@ -184,10 +184,27 @@ accept() {
   load
   [[ "$PHASE" == pending ]] || fail "Нет ожидающего подтверждения."
   [[ "${SUDO_USER:-}" == "$USERNAME" ]] || fail "Подтверждай только через sudo от пользователя $USERNAME."
-  [[ -n "${SSH_CONNECTION:-}" ]] || fail "Требуется новая SSH-сессия."
-  local client_ip client_port server_ip server_port
-  read -r client_ip client_port server_ip server_port <<< "${SSH_CONNECTION:-}"
-  [[ "$server_port" == "$NEW_PORT" ]] || fail "Текущий SSH-порт не совпадает с $NEW_PORT."
+  # sudo may clear SSH_CONNECTION; validate the SSH parent session via
+  # loginctl/sshd process ancestry rather than trusting inherited environment.
+  local pid ppid cmd found=false
+  pid="${SUDO_PID:-$PPID}"
+  while [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]]; do
+    cmd="$(ps -o args= -p "$pid" 2>/dev/null || true)"
+    if [[ "$cmd" == sshd:* || "$cmd" == *"sshd-session"* ]]; then
+      found=true
+      break
+    fi
+    ppid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ' || true)"
+    [[ "$ppid" =~ ^[0-9]+$ && "$ppid" != "$pid" ]] || break
+    pid="$ppid"
+  done
+  [[ "$found" == true ]] || fail "Подтверждение доступно только из SSH-сессии."
+  [[ -n "${SSH_CONNECTION:-}" ]] && {
+    local client_ip client_port server_ip server_port
+    read -r client_ip client_port server_ip server_port <<< "$SSH_CONNECTION"
+    [[ "$server_port" == "$NEW_PORT" ]] || fail "Текущий SSH-порт не совпадает с $NEW_PORT."
+  }
+  # Check the active listener and effective sshd policy before confirming.
   verify_config && listening || fail "Проверка SSH не пройдена."
   systemctl stop "$TIMER"
   PHASE=confirmed
