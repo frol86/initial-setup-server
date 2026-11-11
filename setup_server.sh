@@ -1146,39 +1146,55 @@ fi
 
 echo
 echo "[8] SSH hardening..."
-SSH_SETUP_PENDING=false
-
 if [[ "$SETUP_SSH" == "true" ]]; then
     install_embedded_ssh_hardening
-    echo "Подготовка SSH без внешних модулей."
-        if SSH_HARDENING_PORT="$SSH_PORT" /usr/local/sbin/initial-ssh-hardening --prepare; then
-            if [[ -s "/home/$(awk -F= '/^USERNAME=/{print $2}' /var/lib/initial-ssh-hardening/config)/.ssh/authorized_keys" ]]; then
-                echo "Ключ обнаружен. Можно активировать SSH сейчас."
-                if ask_yes_no "Активировать SSH и начать проверку нового подключения?" "Y"; then
-                    if initial-ssh-hardening --finalize; then
-                        echo "ВАЖНО: SSH ожидает подтверждения из новой сессии."
-                        echo "  sudo initial-ssh-hardening --confirm"
-                        SSH_SETUP_PENDING=true
-                    else
-                        echo "❌ SSH не активирован. Проверь --status."
-                        FINAL_EXIT_CODE=1
+    echo "Подготовка SSH: пользователь, sudo и публичный ключ."
+    if ! SSH_HARDENING_PORT="$SSH_PORT" /usr/local/sbin/initial-ssh-hardening --prepare; then
+        echo "❌ Настройка SSH не выполнена. Старый SSH-доступ сохранён."
+        FINAL_EXIT_CODE=1
+    else
+        SSH_STATE=/var/lib/initial-ssh-hardening/config
+        # This file is root-owned, written by the embedded SSH helper.
+        source "$SSH_STATE"
+        SSH_KEY_FILE="/home/$USERNAME/.ssh/authorized_keys"
+        while [[ ! -s "$SSH_KEY_FILE" ]]; do
+            echo "❌ Публичный ключ не добавлен: $SSH_KEY_FILE"
+            echo "Вставь ключ в файл в другом терминале, затем нажми Enter."
+            echo "Для отказа от SSH-настройки введи 'cancel' (завершение с ошибкой)."
+            read -r -p "Проверить ключ [Enter/cancel]: " SSH_KEY_ANSWER
+            if [[ "$SSH_KEY_ANSWER" == cancel ]]; then
+                echo "SSH НЕ НАСТРОЕН. Установка не считается успешной."
+                FINAL_EXIT_CODE=1
+                break
+            fi
+        done
+        if (( FINAL_EXIT_CODE == 0 )); then
+            echo "Применение SSH: порт $SSH_PORT, запрет root и паролей."
+            echo "Оставь эту root-сессию открытой. Автооткат через 5 минут."
+            if initial-ssh-hardening --finalize; then
+                echo "Открой НОВОЕ SSH-подключение и выполни:"
+                echo "  sudo initial-ssh-hardening --confirm"
+                echo "Ожидаю подтверждения SSH (до 5 минут)..."
+                SSH_CONFIRMED=false
+                for (( SSH_WAIT=0; SSH_WAIT<150; SSH_WAIT++ )); do
+                    if grep -qx 'PHASE=confirmed' "$SSH_STATE"; then
+                        SSH_CONFIRMED=true
+                        break
                     fi
+                    sleep 2
+                done
+                if [[ "$SSH_CONFIRMED" == true ]]; then
+                    echo "✅ SSH подтверждён из нового подключения."
                 else
-                    SSH_SETUP_PENDING=true
-                    echo "SSH подготовлен, но НЕ активирован."
-                    echo "Для активации: sudo initial-ssh-hardening --finalize"
+                    echo "❌ SSH не подтверждён. Проверь автооткат. Установка НЕ считается успешной."
+                    FINAL_EXIT_CODE=1
                 fi
             else
-                SSH_SETUP_PENDING=true
-                echo "SSH подготовлен, но НЕ активирован: файл ключей пуст."
-                echo "Добавь публичный ключ и выполни:"
-                echo "  sudo initial-ssh-hardening --finalize"
+                echo "❌ Не удалось активировать SSH."
+                FINAL_EXIT_CODE=1
             fi
-        else
-            echo "❌ Подготовка SSH не завершена."
-            FINAL_EXIT_CODE=1
         fi
-
+    fi
 else
     echo "Настройка SSH пропущена."
 fi
@@ -1191,11 +1207,7 @@ fi
 echo
 echo "============================================================"
 if (( FINAL_EXIT_CODE == 0 )); then
-    if [[ "$SSH_SETUP_PENDING" == "true" ]]; then
-        echo " ОСНОВНАЯ УСТАНОВКА ЗАВЕРШЕНА; SSH ТРЕБУЕТ ПОДТВЕРЖДЕНИЯ"
-    else
-        echo " НАСТРОЙКА СЕРВЕРА ЗАВЕРШЕНА"
-    fi
+    echo " НАСТРОЙКА СЕРВЕРА ЗАВЕРШЕНА"
 else
     echo " НАСТРОЙКА ЗАВЕРШЕНА С ОШИБКАМИ (СМ. ВЫВОД ВЫШЕ)"
 fi
@@ -1261,9 +1273,17 @@ fi
 
 echo
 if [[ -f /var/run/reboot-required ]]; then
-    echo "Система сообщает о необходимости перезагрузки: sudo reboot"
+    if (( FINAL_EXIT_CODE == 0 )); then
+        echo "Система сообщает о необходимости перезагрузки: sudo reboot"
+    else
+        echo "Система требует перезагрузки, но сначала исправь ошибки настройки."
+    fi
 else
-    echo "После первоначальной настройки рекомендуется перезагрузка: sudo reboot"
+    if (( FINAL_EXIT_CODE == 0 )); then
+        echo "После первоначальной настройки рекомендуется перезагрузка: sudo reboot"
+    else
+        echo "Перезагрузка не рекомендуется: настройка завершилась с ошибками."
+    fi
 fi
 
 exit "$FINAL_EXIT_CODE"
