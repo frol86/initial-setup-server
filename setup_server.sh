@@ -214,6 +214,18 @@ done
 
 
 # ------------------------------------------------------------
+# SSH hardening (optional, two-stage)
+# ------------------------------------------------------------
+
+echo
+if ask_yes_no "Настроить SSH (пользователь, ключи, запрет root/паролей)?" "N"; then
+    SETUP_SSH=true
+else
+    SETUP_SSH=false
+fi
+
+
+# ------------------------------------------------------------
 # Swap
 # ------------------------------------------------------------
 
@@ -384,6 +396,7 @@ else
 fi
 
 echo
+echo "SSH setup: $(yes_no_text "$SETUP_SSH")"
 echo "MC:        $(yes_no_text "$INSTALL_MC")"
 echo "UFW:       $(yes_no_text "$INSTALL_UFW")"
 
@@ -847,6 +860,40 @@ else
 
     echo "Установка AmneziaWG Easy пропущена."
 
+fi
+
+
+# ------------------------------------------------------------
+# SSH hardening (prepare only; never disable current access here)
+# ------------------------------------------------------------
+
+echo
+echo "[8] SSH hardening..."
+
+if [[ "$SETUP_SSH" == "true" ]]; then
+    SSH_HARDENING_URL="https://raw.githubusercontent.com/frol86/initial-setup-server/main/ssh-hardening.sh"
+    SSH_HARDENING_TMP="$(mktemp /tmp/initial-ssh-hardening.XXXXXXXX.sh)"
+    if ! command -v curl >/dev/null 2>&1; then
+        apt-get install -y curl
+    fi
+    if curl -fsSL --retry 3 "$SSH_HARDENING_URL" -o "$SSH_HARDENING_TMP"; then
+        echo "Запуск подготовки SSH. Текущий root-доступ пока сохраняется."
+        if bash "$SSH_HARDENING_TMP" --prepare; then
+            echo "SSH подготовлен. Добавь публичный ключ, затем запусти:"
+            echo "  sudo initial-ssh-hardening --finalize"
+            echo "После подключения новым пользователем подтверди:"
+            echo "  sudo initial-ssh-hardening --confirm"
+        else
+            echo "❌ Подготовка SSH не завершена."
+            FINAL_EXIT_CODE=1
+        fi
+    else
+        echo "❌ Не удалось скачать SSH-модуль. Существующий SSH не изменён."
+        FINAL_EXIT_CODE=1
+    fi
+    rm -f "$SSH_HARDENING_TMP"
+else
+    echo "Настройка SSH пропущена."
 fi
 
 
