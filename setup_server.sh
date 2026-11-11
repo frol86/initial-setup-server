@@ -272,22 +272,6 @@ if ask_yes_no "Установить и настроить UFW?" "Y"; then
 
     INSTALL_UFW=true
 
-    while true; do
-
-        read -rp "SSH порт [22]: " SSH_PORT
-        SSH_PORT="${SSH_PORT:-22}"
-
-        if [[ "$SSH_PORT" =~ ^[0-9]+$ ]] &&
-           (( ${#SSH_PORT} <= 5 )) &&
-           (( 10#$SSH_PORT >= 1 && 10#$SSH_PORT <= 65535 )); then
-            SSH_PORT=$((10#$SSH_PORT))
-            break
-        fi
-
-        echo "❌ Порт должен быть числом от 1 до 65535."
-
-    done
-
     echo
 
     if ask_yes_no "Открыть HTTP 80/tcp?" "N"; then
@@ -311,6 +295,25 @@ else
 
 fi
 
+
+# SSH port is selected once for both UFW and SSH hardening.
+# If SSH hardening is skipped, the port is only a firewall rule.
+if [[ "$INSTALL_UFW" == "true" || "$SETUP_SSH" == "true" ]]; then
+    CURRENT_SSH_PORT="$(sshd -T 2>/dev/null | awk '$1=="port" && !found {print $2; found=1}')"
+    CURRENT_SSH_PORT="${CURRENT_SSH_PORT:-22}"
+    while true; do
+        read -rp "SSH порт [${CURRENT_SSH_PORT}]: " SSH_PORT
+        SSH_PORT="${SSH_PORT:-$CURRENT_SSH_PORT}"
+        if [[ "$SSH_PORT" =~ ^[0-9]{1,5}$ ]] &&
+           (( 10#$SSH_PORT >= 1 && 10#$SSH_PORT <= 65535 )); then
+            SSH_PORT=$((10#$SSH_PORT))
+            break
+        fi
+        echo "❌ Порт должен быть числом от 1 до 65535."
+    done
+else
+    SSH_PORT="-"
+fi
 
 # ------------------------------------------------------------
 # Docker
@@ -869,6 +872,7 @@ fi
 
 echo
 echo "[8] SSH hardening..."
+SSH_SETUP_PENDING=false
 
 if [[ "$SETUP_SSH" == "true" ]]; then
     SSH_HARDENING_URL="https://raw.githubusercontent.com/frol86/initial-setup-server/main/ssh-hardening.sh"
@@ -878,11 +882,29 @@ if [[ "$SETUP_SSH" == "true" ]]; then
     fi
     if curl -fsSL --retry 3 "$SSH_HARDENING_URL" -o "$SSH_HARDENING_TMP"; then
         echo "Запуск подготовки SSH. Текущий root-доступ пока сохраняется."
-        if bash "$SSH_HARDENING_TMP" --prepare; then
-            echo "SSH подготовлен. Добавь публичный ключ, затем запусти:"
-            echo "  sudo initial-ssh-hardening --finalize"
-            echo "После подключения новым пользователем подтверди:"
-            echo "  sudo initial-ssh-hardening --confirm"
+        if SSH_HARDENING_PORT="$SSH_PORT" bash "$SSH_HARDENING_TMP" --prepare; then
+            if [[ -s "/home/$(awk -F= '/^USERNAME=/{print $2}' /var/lib/initial-ssh-hardening/config)/.ssh/authorized_keys" ]]; then
+                echo "Ключ обнаружен. Можно активировать SSH сейчас."
+                if ask_yes_no "Активировать SSH и начать проверку нового подключения?" "Y"; then
+                    if initial-ssh-hardening --finalize; then
+                        echo "ВАЖНО: SSH ожидает подтверждения из новой сессии."
+                        echo "  sudo initial-ssh-hardening --confirm"
+                        SSH_SETUP_PENDING=true
+                    else
+                        echo "❌ SSH не активирован. Проверь --status."
+                        FINAL_EXIT_CODE=1
+                    fi
+                else
+                    SSH_SETUP_PENDING=true
+                    echo "SSH подготовлен, но НЕ активирован."
+                    echo "Для активации: sudo initial-ssh-hardening --finalize"
+                fi
+            else
+                SSH_SETUP_PENDING=true
+                echo "SSH подготовлен, но НЕ активирован: файл ключей пуст."
+                echo "Добавь публичный ключ и выполни:"
+                echo "  sudo initial-ssh-hardening --finalize"
+            fi
         else
             echo "❌ Подготовка SSH не завершена."
             FINAL_EXIT_CODE=1
@@ -904,9 +926,13 @@ fi
 echo
 echo "============================================================"
 if (( FINAL_EXIT_CODE == 0 )); then
-    echo " НАСТРОЙКА СЕРВЕРА ЗАВЕРШЕНА"
+    if [[ "$SSH_SETUP_PENDING" == "true" ]]; then
+        echo " ОСНОВНАЯ УСТАНОВКА ЗАВЕРШЕНА; SSH ТРЕБУЕТ ПОДТВЕРЖДЕНИЯ"
+    else
+        echo " НАСТРОЙКА СЕРВЕРА ЗАВЕРШЕНА"
+    fi
 else
-    echo " НАСТРОЙКА ЗАВЕРШЕНА С ОШИБКОЙ AMNEZIAWG EASY"
+    echo " НАСТРОЙКА ЗАВЕРШЕНА С ОШИБКАМИ (СМ. ВЫВОД ВЫШЕ)"
 fi
 echo "============================================================"
 
