@@ -174,10 +174,10 @@ EOF
 accept() {
   load
   [[ "$PHASE" == pending ]] || fail "Нет ожидающего подтверждения."
-  [[ "$SUDO_USER" == "$USERNAME" ]] || fail "Подтверждай только через sudo от пользователя $USERNAME."
-  [[ -n "$SSH_CONNECTION" ]] || fail "Требуется новая SSH-сессия."
+  [[ "${SUDO_USER:-}" == "$USERNAME" ]] || fail "Подтверждай только через sudo от пользователя $USERNAME."
+  [[ -n "${SSH_CONNECTION:-}" ]] || fail "Требуется новая SSH-сессия."
   local client_ip client_port server_ip server_port
-  read -r client_ip client_port server_ip server_port <<< "$SSH_CONNECTION"
+  read -r client_ip client_port server_ip server_port <<< "${SSH_CONNECTION:-}"
   [[ "$server_port" == "$NEW_PORT" ]] || fail "Текущий SSH-порт не совпадает с $NEW_PORT."
   verify_config && listening || fail "Проверка SSH не пройдена."
   systemctl stop "$TIMER"
@@ -192,7 +192,7 @@ status() {
   sshd -T | grep -E '^(port|permitrootlogin|passwordauthentication|pubkeyauthentication|kbdinteractiveauthentication|authenticationmethods) '
 }
 (( EUID == 0 )) || fail "Запусти под root / через sudo."
-case "$1" in
+case "${1:---prepare}" in
   --prepare|'') prepare ;;
   --finalize) finalize ;;
   --confirm) accept ;;
