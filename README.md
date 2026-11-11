@@ -1,0 +1,61 @@
+# Initial Server Setup
+
+Интерактивная первоначальная настройка Debian/Ubuntu.
+
+## Основной скрипт
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/frol86/initial-setup-server/main/setup_server.sh -o setup_server.sh
+bash setup_server.sh
+```
+
+Сохраняет существующие возможности: hostname, swap, mc, UFW, Docker и AmneziaWG Easy. Настройка UFW учитывает фактический SSH-порт: указание нового порта для firewall **само по себе не меняет порт SSH**.
+
+## Защита SSH (отдельный интерактивный скрипт)
+
+Под root:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/frol86/initial-setup-server/main/ssh-hardening.sh -o ssh-hardening.sh
+bash ssh-hardening.sh
+```
+
+На первом этапе скрипт спрашивает имя пользователя, порт SSH, режим sudo и предлагает сразу вставить публичный SSH-ключ. Можно отказаться: создаётся пустой `/home/USER/.ssh/authorized_keys`, который затем заполняется вручную. Первый этап **не отключает текущий root-доступ и не меняет работающий SSH**.
+
+После добавления публичного ключа под root запусти:
+
+```bash
+initial-ssh-hardening --finalize
+```
+
+Скрипт проверит ключ, создаст конфигурацию с `PermitRootLogin no`, `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, `AuthenticationMethods publickey` и применит порт. В Ubuntu с `ssh.socket` он переключит службу на `ssh.service`. Перед изменением создаётся systemd-таймер **автоматического отката через 5 минут**.
+
+**Не закрывая старое подключение**, открой новую SSH-сессию:
+
+```bash
+ssh -p YOUR_PORT YOUR_USER@SERVER_IP
+```
+
+И **из новой сессии** обязательно выполни:
+
+```bash
+sudo initial-ssh-hardening --confirm
+```
+
+Подтверждение остановит откат. Иначе предыдущие SSH-настройки будут восстановлены автоматически.
+
+### Дополнительные команды
+
+```bash
+sudo initial-ssh-hardening --status
+sudo initial-ssh-hardening --rollback
+```
+
+### Важные ограничения
+
+- Пароль root для локальной консоли провайдера не блокируется.
+- Если в панели хостера включён отдельный firewall, **до финализации открой выбранный SSH-порт там**.
+- Если UFW активен, скрипт добавит правило для нового порта, сохраняя старое. Удалить старое правило после подтверждения можно отдельно.
+- Не рекомендуется выполнять на сервере с нестандартными `Match`, `AllowUsers`, `AuthorizedKeysCommand` и другими сложными SSH-политиками без проверки.
+- Пользователю, выбирающему sudo с паролем, придётся задать локальный пароль; SSH-вход по паролю всё равно будет выключен.
+- Держи открытой консоль провайдера и исходную SSH-сессию, пока новый доступ не подтверждён.
