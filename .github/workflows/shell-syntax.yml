@@ -1,0 +1,20 @@
+name: Shell syntax
+on:
+  push:
+    paths:
+      - 'setup_server.sh'
+      - 'ssh-hardening.sh'
+      - '.github/workflows/shell-syntax.yml'
+  pull_request:
+    paths:
+      - 'setup_server.sh'
+      - 'ssh-hardening.sh'
+jobs:
+  bash-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Bash syntax
+        run: |
+          bash -n setup_server.sh
+          bash -n ssh-hardening.sh
