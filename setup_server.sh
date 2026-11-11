@@ -329,7 +329,11 @@ prepare() {
   fi
   PHASE=prepared
   save
-  install -m 755 "$0" "$SELF"
+  # The full installer has already written this helper to $SELF.
+  # Copy only when running the helper from a different source path.
+  if [[ "$(readlink -f "$0")" != "$(readlink -f "$SELF")" ]]; then
+    install -m 755 "$0" "$SELF"
+  fi
   say "Готово. Текущий SSH-доступ сохранён."
   printf 'Файл ключей: %s\nПосле добавления ключа: %s --finalize\n' "$(authorized_keys)" "$SELF"
 }
