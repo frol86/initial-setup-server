@@ -89,7 +89,7 @@ prepare() {
   say "Подготовка. Текущие SSH-настройки пока не меняются."
   USERNAME="$(prompt 'Имя пользователя' 'oleg')"
   [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]*$ && "$USERNAME" != root ]] || fail "Некорректное имя."
-  OLD_PORT="$(sshd -T | awk '$1=="port"{print $2;exit}')"
+  OLD_PORT="$(sshd -T | awk '$1=="port" && !found {print $2; found=1}')"
   OLD_PORT="$(printf '%s' "$OLD_PORT" | tr -d '\n')"
   NEW_PORT="$(prompt 'SSH-порт' "$OLD_PORT")"
   [[ "$NEW_PORT" =~ ^[0-9]{1,5}$ ]] || fail "Неправильный порт."
