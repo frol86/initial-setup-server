@@ -1171,6 +1171,24 @@ if [[ "$SETUP_SSH" == "true" ]]; then
         SSH_STATE=/var/lib/initial-ssh-hardening/config
         # This file is root-owned, written by the embedded SSH helper.
         source "$SSH_STATE"
+        # Docker is installed in step 6; the SSH user is created in step 8.
+        # Grant Docker access only when Docker was explicitly selected.
+        if [[ "$INSTALL_DOCKER" == "true" ]]; then
+            if getent group docker >/dev/null 2>&1; then
+                if ! id -nG "$USERNAME" | tr ' ' '\n' | grep -qx docker; then
+                    if usermod -aG docker "$USERNAME"; then
+                        echo "Пользователь $USERNAME добавлен в группу docker."
+                        echo "Доступ к Docker без sudo появится после нового входа по SSH."
+                    else
+                        echo "❌ Не удалось добавить $USERNAME в группу docker."
+                        FINAL_EXIT_CODE=1
+                    fi
+                fi
+            else
+                echo "❌ Группа docker отсутствует после установки Docker."
+                FINAL_EXIT_CODE=1
+            fi
+        fi
         SSH_KEY_FILE="/home/$USERNAME/.ssh/authorized_keys"
         while [[ ! -s "$SSH_KEY_FILE" ]]; do
             echo "❌ Публичный ключ не добавлен: $SSH_KEY_FILE"
