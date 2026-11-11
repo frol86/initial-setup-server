@@ -100,7 +100,12 @@ prepare() {
   [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]*$ && "$USERNAME" != root ]] || fail "Некорректное имя."
   OLD_PORT="$(sshd -T | awk '$1=="port" && !found {print $2; found=1}')"
   OLD_PORT="$(printf '%s' "$OLD_PORT" | tr -d '\n')"
-  NEW_PORT="$(prompt 'SSH-порт' "$OLD_PORT")"
+  if [[ -n "${SSH_HARDENING_PORT:-}" ]]; then
+    NEW_PORT="$SSH_HARDENING_PORT"
+    say "Использую SSH-порт $NEW_PORT, выбранный в основном установщике."
+  else
+    NEW_PORT="$(prompt 'SSH-порт' "$OLD_PORT")"
+  fi
   [[ "$NEW_PORT" =~ ^[0-9]{1,5}$ ]] || fail "Неправильный порт."
   (( 10#$NEW_PORT >= 1 && 10#$NEW_PORT <= 65535 )) || fail "Порт вне диапазона."
   NEW_PORT="$((10#$NEW_PORT))"
@@ -199,11 +204,14 @@ accept() {
     pid="$ppid"
   done
   [[ "$found" == true ]] || fail "Подтверждение доступно только из SSH-сессии."
-  [[ -n "${SSH_CONNECTION:-}" ]] && {
+  # sudo commonly removes SSH_CONNECTION; process ancestry confirms that
+  # this command originates from an sshd session, while listener and policy
+  # checks below verify the configured port and restrictions.
+  if [[ -n "${SSH_CONNECTION:-}" ]]; then
     local client_ip client_port server_ip server_port
     read -r client_ip client_port server_ip server_port <<< "$SSH_CONNECTION"
     [[ "$server_port" == "$NEW_PORT" ]] || fail "Текущий SSH-порт не совпадает с $NEW_PORT."
-  }
+  fi
   # Check the active listener and effective sshd policy before confirming.
   verify_config && listening || fail "Проверка SSH не пройдена."
   systemctl stop "$TIMER"
