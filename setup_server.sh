@@ -1168,7 +1168,7 @@ if [[ "$SETUP_SSH" == "true" ]]; then
                 break
             fi
         done
-        if (( FINAL_EXIT_CODE == 0 )); then
+        if [[ "${SSH_KEY_ANSWER:-}" != cancel ]]; then
             echo "Применение SSH: порт $SSH_PORT, запрет root и паролей."
             echo "Оставь эту root-сессию открытой. Автооткат через 5 минут."
             if initial-ssh-hardening --finalize; then
