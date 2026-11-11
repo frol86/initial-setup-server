@@ -87,7 +87,16 @@ prepare() {
   [[ ! -e "$STATE/config" && ! -e "$CONFIG" ]] || fail "Настройка уже существует; смотри --status."
   [[ -t 0 ]] || fail "Запускать в терминале."
   say "Подготовка. Текущие SSH-настройки пока не меняются."
-  USERNAME="$(prompt 'Имя пользователя' 'oleg')"
+  while true; do
+    read -r -p 'Имя нового пользователя (обязательно): ' USERNAME </dev/tty || fail "Нужен терминал."
+    [[ -n "$USERNAME" ]] || { echo "Имя пользователя не может быть пустым."; continue; }
+    [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]*$ && "$USERNAME" != root ]] || { echo "Недопустимое имя пользователя."; continue; }
+    if id "$USERNAME" >/dev/null 2>&1; then
+      echo "Пользователь $USERNAME уже существует."
+      confirm_question "Использовать существующего пользователя и изменить его sudo/SSH настройки?" n || continue
+    fi
+    break
+  done
   [[ "$USERNAME" =~ ^[a-z_][a-z0-9_-]*$ && "$USERNAME" != root ]] || fail "Некорректное имя."
   OLD_PORT="$(sshd -T | awk '$1=="port" && !found {print $2; found=1}')"
   OLD_PORT="$(printf '%s' "$OLD_PORT" | tr -d '\n')"
