@@ -596,7 +596,7 @@ if [[ "$INSTALL_UFW" == "true" ]]; then
 
     # Keep the actual current SSH listener accessible even if the requested
     # firewall port differs from the sshd configuration.
-    CURRENT_SSH_PORT="$(sshd -T 2>/dev/null | awk '$1=="port"{print $2;exit}')"
+    CURRENT_SSH_PORT="$(sshd -T 2>/dev/null | awk '$1=="port" && !found {print $2; found=1}')"
     CURRENT_SSH_PORT="${CURRENT_SSH_PORT:-22}"
     ufw allow "${CURRENT_SSH_PORT}/tcp"
     ufw allow "${SSH_PORT}/tcp"
