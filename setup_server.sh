@@ -293,8 +293,17 @@ prepare() {
   systemctl is-enabled --quiet ssh.socket && OLD_SOCKET=enabled
   if systemctl is-active --quiet ssh.socket; then OLD_SOCKET=active; fi
   systemctl is-enabled --quiet ssh.service && OLD_SERVICE=enabled
-  apt-get update
-  DEBIAN_FRONTEND=noninteractive apt-get install -y sudo openssh-server
+  # Avoid racing unattended-upgrades after the main apt upgrade.
+  local -a missing_packages=()
+  dpkg-query -W -f='${Status}' sudo 2>/dev/null | grep -qx 'install ok installed' || missing_packages+=(sudo)
+  dpkg-query -W -f='${Status}' openssh-server 2>/dev/null | grep -qx 'install ok installed' || missing_packages+=(openssh-server)
+  if (( ${#missing_packages[@]} > 0 )); then
+    say "Установка отсутствующих пакетов SSH; ожидание APT/dpkg до 300 секунд."
+    DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 install -y "${missing_packages[@]}" ||
+      fail "Не удалось установить зависимости SSH. Текущий SSH не изменён."
+  else
+    say "sudo и openssh-server уже установлены; повторный APT не нужен."
+  fi
   if ! id "$USERNAME" >/dev/null 2>&1; then useradd -m -s /bin/bash "$USERNAME"; fi
   [[ "$(id -u "$USERNAME")" != 0 ]] || fail "UID 0 запрещён."
   [[ -d "/home/$USERNAME" ]] || fail "Нет каталога /home/$USERNAME."
