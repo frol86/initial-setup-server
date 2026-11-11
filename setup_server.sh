@@ -581,7 +581,16 @@ if [[ "$INSTALL_UFW" == "true" ]]; then
 
     # Сначала разрешаем SSH, только потом включаем firewall.
 
+    # Keep the actual current SSH listener accessible even if the requested
+    # firewall port differs from the sshd configuration.
+    CURRENT_SSH_PORT="$(sshd -T 2>/dev/null | awk '$1=="port"{print $2;exit}')"
+    CURRENT_SSH_PORT="${CURRENT_SSH_PORT:-22}"
+    ufw allow "${CURRENT_SSH_PORT}/tcp"
     ufw allow "${SSH_PORT}/tcp"
+    if [[ "$SSH_PORT" != "$CURRENT_SSH_PORT" ]]; then
+        echo "Внимание: порт ${SSH_PORT} открыт в UFW, но SSH пока слушает ${CURRENT_SSH_PORT}."
+        echo "Для смены порта используй отдельный ssh-hardening.sh."
+    fi
 
     if [[ "$ALLOW_HTTP" == "true" ]]; then
         ufw allow 80/tcp
