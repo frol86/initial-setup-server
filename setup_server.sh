@@ -410,6 +410,16 @@ accept() {
   systemctl stop "$TIMER"
   PHASE=confirmed
   save
+  # Remove the temporary old SSH firewall allowance only after the new
+  # SSH session is confirmed. Keep it when rollback is still possible.
+  if [[ "$OLD_PORT" != "$NEW_PORT" ]] &&
+     command -v ufw >/dev/null 2>&1 &&
+     ufw status | grep -q '^Status: active'; then
+    if ! ufw --force delete allow "$OLD_PORT/tcp"; then
+      echo "ВНИМАНИЕ: не удалось удалить временное правило $OLD_PORT/tcp из UFW." >&2
+      echo "Проверь: sudo ufw status verbose" >&2
+    fi
+  fi
   say "Подтверждено. Откат отменён. root и парольный SSH-вход запрещены."
 }
 status() {
@@ -865,7 +875,7 @@ if [[ "$INSTALL_UFW" == "true" ]]; then
     ufw allow "${SSH_PORT}/tcp"
     if [[ "$SSH_PORT" != "$CURRENT_SSH_PORT" ]]; then
         echo "Внимание: порт ${SSH_PORT} открыт в UFW, но SSH пока слушает ${CURRENT_SSH_PORT}."
-        echo "Для смены порта используй отдельный ssh-hardening.sh."
+        echo "Временный старый порт будет закрыт после подтверждения нового SSH-входа."
     fi
 
     if [[ "$ALLOW_HTTP" == "true" ]]; then
