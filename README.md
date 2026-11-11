@@ -9,7 +9,7 @@ curl -fsSL https://raw.githubusercontent.com/frol86/initial-setup-server/main/se
 bash setup_server.sh
 ```
 
-Сохраняет существующие возможности: hostname, swap, mc, UFW, Docker и AmneziaWG Easy. Настройка UFW учитывает фактический SSH-порт: указание нового порта для firewall **само по себе не меняет порт SSH**.
+Сохраняет существующие возможности: hostname, swap, mc, UFW, Docker и AmneziaWG Easy. **Дополнительно спрашивает, нужно ли настроить SSH (по умолчанию — нет).** Если выбрать «да», после основной установки запускает первый, безопасный этап SSH-hardening: создание пользователя, sudo и authorized_keys. Если выбрать «нет», SSH не меняется. Настройка UFW учитывает фактический SSH-порт: указание нового порта для firewall **само по себе не меняет порт SSH**.
 
 ## Защита SSH (отдельный интерактивный скрипт)
 
