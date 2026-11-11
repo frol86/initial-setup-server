@@ -178,6 +178,7 @@ wait_for_amnezia() {
 install_embedded_ssh_hardening() {
     install -d -m 755 /usr/local/sbin
     cat > /usr/local/sbin/initial-ssh-hardening <<'INITIAL_SSH_HARDENING_EMBEDDED_EOF'
+#!/usr/bin/env bash
 set -Eeuo pipefail
 umask 077
 
